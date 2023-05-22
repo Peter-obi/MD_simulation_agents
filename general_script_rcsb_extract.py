@@ -2,10 +2,12 @@ import requests
 import json
 import pandas as pd
 
-#change the gene name to the desired gene_name (this can be gotten from uniprot)
+# Change the gene name to the desired gene_name (this can be gotten from uniprot)
 gene_name = "OPRM1"
 
 url = " https://search.rcsb.org/rcsbsearch/v2/query"
+
+# Define the query
 query = {
   "query": {
     "type": "terminal",
@@ -34,9 +36,14 @@ query = {
   }
 }
 
+
+# Make the request
 response = requests.post(url, json=query)
+
+# Extract the data from the response
 data = response.json()
 
+# Get the PDB_ids
 pdb_ids = [item["identifier"] for item in data.get("result_set", [])]
 
 url = 'https://data.rcsb.org/graphql'
@@ -85,4 +92,4 @@ for entry in entries:
 df = pd.DataFrame(entry_data)
 
 # Write the DataFrame to a CSV file
-df.to_csv('pdb_data.csv', index=False)
+df.to_csv('pdb_data_oprm1.csv', index=False)
