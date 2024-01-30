@@ -3,4 +3,4 @@ Given a uniprot ID, these agents should be able to run a simulation. First itera
 
 # List of tasks, will update as I finish each one
 1. Is protein soluble or membrane bound? Use appropriate extraction scripts.
-2. Choose protein with highest resolution 
+2. Choose pdb with highest resolution from returned results and prepare.
