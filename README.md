@@ -1,4 +1,4 @@
-# Build llm agents
+# Build llm agents that can run MD simulations 
 Given a uniprot ID, these agents should be able to run a simulation. First iteration will consider all things being equal, that is perfect protein with pdb structures etc. Other iterations will include checking for alphafold structures where available. User just has to specify uniprot ID and length of production run. 
 
 # Initial list of remaining tasks
