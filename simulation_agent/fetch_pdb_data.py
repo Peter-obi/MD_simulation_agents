@@ -57,12 +57,20 @@ def fetch_pdb_data(gene_name):
     entries = data['data']['entries']
     entry_data = []
     for entry in entries:
+        resolution = entry['rcsb_entry_info']['resolution_combined']
+        if isinstance(resolution, list) and len(resolution) > 0:
+            resolution = resolution[0]
+        else:
+            resolution = None
+        
         entry_data.append({
             'ID': entry['rcsb_id'],
             'Initial Release Date': entry['rcsb_accession_info']['initial_release_date'],
             'PubMed ID': entry['rcsb_primary_citation']['pdbx_database_id_PubMed'],
             'DOI': entry['rcsb_primary_citation']['pdbx_database_id_DOI'],
-            'Resolution': entry['rcsb_entry_info']['resolution_combined']
+            'Resolution': resolution
         })
+    
     df = pd.DataFrame(entry_data)
+    df['Resolution'] = pd.to_numeric(df['Resolution'], errors='coerce')
     return df
