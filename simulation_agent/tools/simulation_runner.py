@@ -14,21 +14,23 @@ class SimulationRunner:
     def run_simulation(self):
         """
         Runs the simulation, including minimization, equilibration, and production.
+
+        The simulation is run in the following stages:
+        1.  Energy minimization.
+        2.  A brief equilibration run.
+        3.  The main production run.
         """
         platform = Platform.getPlatformByName('CPU')
         self.simulation = Simulation(self.topology, self.system, self.integrator, platform)
         self.simulation.context.setPositions(self.positions)
 
-        # Minimization
         print("Minimizing energy...")
         self.simulation.minimizeEnergy()
 
-        # Equilibration
         print("Running equilibration...")
         self.simulation.context.setVelocitiesToTemperature(300*kelvin)
         self.simulation.step(1000)
 
-        # Production
         print("Running production...")
         self.simulation.reporters.append(DCDReporter('production.dcd', 1000))
         self.simulation.reporters.append(StateDataReporter('production.log', 1000, step=True,

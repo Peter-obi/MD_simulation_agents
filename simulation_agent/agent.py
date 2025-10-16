@@ -22,13 +22,19 @@ class SimulationAgent:
     def run_workflow(self):
         """
         Runs the entire simulation workflow by calling the tools in sequence.
+
+        The workflow consists of the following steps:
+        1.  Fetch PDB data for the given gene name.
+        2.  Download the PDB and FASTA files, and revert any mutations to match the
+            wild-type sequence.
+        3.  Prepare the protein for simulation using PDBFixer.
+        4.  Set up the simulation system with a water box and ions.
+        5.  Run the molecular dynamics simulation.
         """
-        # 1. Fetch PDB data
         df = fetch_pdb_data(self.gene_name)
         print("PDB data fetched successfully.")
         print(df)
 
-        # 2. Download PDB and FASTA, and revert mutations
         comparison = PDBComparison(df, self.uniprot_id)
         self.pdb_file_path = comparison.download_pdb()
         comparison.download_fasta()
@@ -39,16 +45,13 @@ class SimulationAgent:
         else:
             pdb_to_prepare = self.reverted_pdb_file_path
 
-        # 3. Prepare the protein
         preparer = ProteinPreparer(pdb_to_prepare)
         self.fixed_pdb_file_path = preparer.prepare_protein()
 
-        # 4. Set up the simulation system
         pdb = PDBFile(self.fixed_pdb_file_path)
         setup = SystemSetup(pdb)
         self.system, self.topology, self.positions = setup.setup_system()
 
-        # 5. Run the simulation
         runner = SimulationRunner(
             self.topology, self.system, self.positions, self.production_steps
         )
