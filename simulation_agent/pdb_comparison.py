@@ -3,7 +3,7 @@ from Bio import SeqIO
 from Bio import pairwise2
 from Bio.Align import substitution_matrices
 from Bio.PDB import PDBList, PDBParser, PDBIO
-from Bio.PDB.Polypeptide import three_to_one, one_to_three
+from Bio.Data.PDBData import protein_letters_3to1, protein_letters_1to3
 from Bio.PDB.PDBExceptions import PDBConstructionWarning
 from Bio import BiopythonDeprecationWarning
 import requests
@@ -27,6 +27,7 @@ class PDBComparison:
         pdbl = PDBList()
         self.pdb_file = pdbl.retrieve_pdb_file(pdb_id, pdir='.', file_format='pdb')
         print(f"PDB file {pdb_id} downloaded successfully.")
+        return self.pdb_file
 
     def download_fasta(self):
         url = f"https://www.uniprot.org/uniprot/{self.uniprot_id}.fasta"
@@ -78,7 +79,7 @@ class PDBComparison:
         mutations = self.find_mutations()
         if not mutations:
             print("No mutations found.")
-            return
+            return None
 
         print("Mutations found:")
         for mutation in mutations:
@@ -91,10 +92,12 @@ class PDBComparison:
         for mutation in mutations:
             residue = mutation[0]
             fasta_aa = mutation[2]
-            residue.resname = one_to_three(fasta_aa)
+            residue.resname = protein_letters_1to3[fasta_aa]
 
         pdb_id = structure.get_id()
+        reverted_pdb_file = f"{pdb_id}_reverted.pdb"
         io = PDBIO()
         io.set_structure(structure)
-        io.save(f"{pdb_id}_reverted.pdb")
-        print(f"Reverted structure saved as {pdb_id}_reverted.pdb")
+        io.save(reverted_pdb_file)
+        print(f"Reverted structure saved as {reverted_pdb_file}")
+        return reverted_pdb_file
