@@ -1,52 +1,104 @@
-# Molecular Dynamics Simulation Agent
+# Molecular Dynamics Expert-Policy Agent
 
-This project provides a modular, agent-based system for running molecular dynamics (MD) simulations using OpenMM. The agent orchestrates a series of tools to fetch protein data, prepare the protein, and run a simulation, providing a flexible and extensible framework for MD simulations.
+This repository is now sequence-first and LLM-policy-driven.
 
-## Architecture
+The objective is to optimize whether an LLM can produce the same setup decisions a human MD expert would make when given a protein sequence, then use that protocol to build a runnable OpenMM simulation workflow.
 
-The project is structured around a central `SimulationAgent` that coordinates a series of tools, each responsible for a specific step in the simulation workflow:
+## Core Design
 
-*   **`fetch_pdb_data`**: Fetches protein data from the RCSB PDB.
-*   **`PDBComparison`**: Downloads PDB and FASTA files and reverts mutations.
-*   **`ProteinPreparer`**: Prepares the protein for simulation using PDBFixer.
-*   **`SystemSetup`**: Sets up the simulation system with a water box and ions.
-*   **`SimulationRunner`**: Runs the MD simulation.
+The repo has two complementary loops:
 
-This modular design allows for easy extension and modification of the simulation workflow.
+1. Expert-policy scoring loop (for harness optimization)
+- Input: sequence task
+- Policy output: expert protocol (`propose_protocol(task, pdb_candidates)`)
+- Evaluator output: score for expert-step quality and simulation readiness
+- No heavy MD execution required for scoring
+
+2. Runtime execution loop (for actual setup/simulation)
+- Input: sequence task + policy
+- Executes sequence search, structure selection, optional sequence reconciliation, preparation, system setup
+- Optional smoke test simulation
+- Optional production simulation
+
+## Key Files
+
+- `simulation_agent/policy.py`
+  - Mutatable LLM policy contract
+  - Defines `propose_protocol(task, pdb_candidates)`
+
+- `simulation_agent/setup_targets.py`
+  - Sequence benchmark tasks (`TRAIN_TASKS`, `HOLDOUT_TASKS`)
+  - Required expert-step tags per task
+
+- `simulation_agent/setup_evaluator.py`
+  - Harness-facing evaluator (`evaluate(program_path)`)
+  - Scores schema quality, target grounding, expert-step coverage, structure strategy, setup readiness, validation checks
+
+- `simulation_agent/protocol_executor.py`
+  - Execution bridge from policy protocol to runnable setup/simulation
+
+- `simulation_agent/agent.py`
+  - Shared setup core
+  - Sequence-first workflow: `run_sequence_workflow(...)`
+
+- `simulation_agent/main.py`
+  - CLI for sequence benchmark tasks and custom sequence runs
 
 ## Installation
 
-1.  **Clone the repository:**
-    ```bash
-    git clone <repository-url>
-    cd <repository-directory>
-    ```
+```bash
+pip install -r requirements.txt
+```
 
-2.  **Create and activate a virtual environment (recommended):**
-    ```bash
-    python -m venv venv
-    source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
-    ```
+## Local Policy Evaluation
 
-3.  **Install the required packages:**
-    The dependencies are listed in `requirements.txt`.
-    ```bash
-    pip install -r requirements.txt
-    ```
-    *Note: `pdbfixer` is installed directly from its GitHub repository to ensure the latest version is used.*
-
-## Usage
-
-The main entry point for the simulation is `simulation_agent/main.py`, which initializes and runs the `SimulationAgent`. The script takes the following command-line arguments:
-
-*   `gene_name`: The gene name for the protein of interest (e.g., "OPRM1").
-*   `uniprot_id`: The UniProt ID for the protein (e.g., "P35372").
-*   `production_steps`: The number of steps for the production run.
-
-### Example
-
-To run a simulation for the Mu-opioid receptor (OPRM1) for 1,000,000 steps:
+Evaluate current policy against sequence expert-step benchmarks:
 
 ```bash
-python -m simulation_agent.main OPRM1 P35372 1000000
+python -m simulation_agent.evaluate_setup_policy simulation_agent/policy.py
 ```
+
+## Harness Optimization (SkyDiscover)
+
+```bash
+cd /Users/peterobi/Documents/ideas/harness/skydiscover-main
+uv run skydiscover-run \
+  /Users/peterobi/Documents/ideas/MD_simulation_agents/simulation_agent/policy.py \
+  /Users/peterobi/Documents/ideas/MD_simulation_agents/simulation_agent/setup_evaluator.py \
+  --search adaevolve \
+  --model gpt-5 \
+  --iterations 30 \
+  --agentic
+```
+
+## Sequence Runtime Execution
+
+Run a predefined sequence task with optional smoke test:
+
+```bash
+python -m simulation_agent.main task hba1_reference --run-smoke-test --smoke-test-steps 250
+```
+
+List available sequence tasks:
+
+```bash
+python -m simulation_agent.main task --list-tasks
+```
+
+Run a custom sequence:
+
+```bash
+python -m simulation_agent.main sequence "VLSPADKTNVKAAWGKVGAHAGEYGAEALERMFLSFPTTKTYFPHF" --run-smoke-test
+```
+
+Run full production on top of setup:
+
+```bash
+python -m simulation_agent.main task adrb2_reference --run-production --production-steps 100000
+```
+
+## Notes
+
+- Sequence reconciliation is treated as one expert decision step, not as a hardcoded WT-only rule.
+- API keys are required for the external LLM optimizer loop, not for the local setup/simulation code path itself.
+- Runtime execution modes require `openmm` and `pdbfixer` installed locally.

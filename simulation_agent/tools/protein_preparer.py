@@ -1,8 +1,13 @@
+"""Protein preparation utilities built on top of PDBFixer."""
+
 from pdbfixer import PDBFixer
 from openmm.app import PDBFile
 
 class ProteinPreparer:
+    """Prepare a PDB structure for simulation."""
+
     def __init__(self, pdb_file):
+        """Initialize PDBFixer state for a source PDB file."""
         self.pdb_file = pdb_file
         self.fixer = PDBFixer(filename=pdb_file)
         self.fixed_pdb_file = "fixed.pdb"

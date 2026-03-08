@@ -4,3 +4,7 @@
 *.ent
 *.dcd
 *.log
+archive/
+archived/
+**/archive/
+**/archived/

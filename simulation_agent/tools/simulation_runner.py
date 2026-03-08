@@ -1,9 +1,14 @@
+"""Run minimization, equilibration, and production MD with OpenMM."""
+
 from openmm import LangevinIntegrator, Platform
 from openmm.app import Simulation, DCDReporter, StateDataReporter
 from openmm.unit import kelvin, picoseconds, nanometer
 
 class SimulationRunner:
+    """Execute MD simulation stages using a prepared OpenMM system."""
+
     def __init__(self, topology, system, positions, production_steps):
+        """Initialize simulation state and integrator configuration."""
         self.topology = topology
         self.system = system
         self.positions = positions
@@ -13,22 +18,19 @@ class SimulationRunner:
 
     def run_simulation(self):
         """
-        Runs the simulation, including minimization, equilibration, and production.
+        Run minimization, equilibration, and production simulation stages.
         """
         platform = Platform.getPlatformByName('CPU')
         self.simulation = Simulation(self.topology, self.system, self.integrator, platform)
         self.simulation.context.setPositions(self.positions)
 
-        # Minimization
         print("Minimizing energy...")
         self.simulation.minimizeEnergy()
 
-        # Equilibration
         print("Running equilibration...")
         self.simulation.context.setVelocitiesToTemperature(300*kelvin)
         self.simulation.step(1000)
 
-        # Production
         print("Running production...")
         self.simulation.reporters.append(DCDReporter('production.dcd', 1000))
         self.simulation.reporters.append(StateDataReporter('production.log', 1000, step=True,

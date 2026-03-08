@@ -1,103 +1,127 @@
+"""PDB selection and sequence-reconciliation utilities."""
+
+from pathlib import Path
+
 from Bio import PDB
-from Bio import SeqIO
 from Bio import pairwise2
 from Bio.Align import substitution_matrices
-from Bio.PDB import PDBList, PDBParser, PDBIO
-from Bio.Data.PDBData import protein_letters_3to1, protein_letters_1to3
-from Bio.PDB.PDBExceptions import PDBConstructionWarning
-from Bio import BiopythonDeprecationWarning
-import requests
-import warnings
-import traceback
+from Bio.Data.PDBData import protein_letters_1to3
+from Bio.PDB import PDBIO, PDBList
+
 
 class PDBComparison:
-    def __init__(self, df, uniprot_id):
+    """Handle PDB selection and sequence-aware residue reconciliation."""
+
+    def __init__(self, df, reference_sequence=None):
+        """Initialize with candidate entries and optional reference sequence."""
         self.df = df
-        self.uniprot_id = uniprot_id
+        self.reference_sequence = reference_sequence
         self.pdb_file = None
+        self.selected_entry = None
 
-    def download_pdb(self):
-        if self.df['Resolution'].notna().any():
-            lowest_resolution_entry = self.df.loc[self.df['Resolution'].idxmin()]
-        else:
-            print("No valid resolution values found. Selecting the first entry.")
-            lowest_resolution_entry = self.df.iloc[0]
+    def _select_entry(self, pdb_id=None):
+        """Select either an explicit PDB ID or the best-resolution candidate."""
+        if self.df.empty:
+            raise ValueError("PDB candidate table is empty.")
 
-        pdb_id = lowest_resolution_entry['ID']
+        if pdb_id is not None:
+            matches = self.df[self.df["ID"] == pdb_id]
+            if matches.empty:
+                raise ValueError(f"PDB ID '{pdb_id}' was not found in the candidate table.")
+            return matches.iloc[0]
+
+        if self.df["Resolution"].notna().any():
+            return self.df.loc[self.df["Resolution"].idxmin()]
+
+        return self.df.iloc[0]
+
+    def download_pdb(self, pdb_id=None):
+        """Download the selected PDB file and store its metadata."""
+        selected_entry = self._select_entry(pdb_id=pdb_id)
+        self.selected_entry = selected_entry.to_dict()
+        pdb_id = selected_entry["ID"]
         pdbl = PDBList()
-        self.pdb_file = pdbl.retrieve_pdb_file(pdb_id, pdir='.', file_format='pdb')
-        print(f"PDB file {pdb_id} downloaded successfully.")
+        self.pdb_file = pdbl.retrieve_pdb_file(pdb_id, pdir=".", file_format="pdb")
         return self.pdb_file
 
-    def download_fasta(self):
-        url = f"https://www.uniprot.org/uniprot/{self.uniprot_id}.fasta"
-        response = requests.get(url)
-        if response.status_code == 200:
-            with open(f"{self.uniprot_id}.fasta", "w") as f:
-                f.write(response.text)
-            print(f"FASTA file {self.uniprot_id} downloaded successfully.")
-        else:
-            print(f"Failed to download FASTA file {self.uniprot_id}.")
+    def _extract_pdb_sequence(self):
+        """Return PDB sequence and residue handles in alignment order."""
+        if not self.pdb_file:
+            raise ValueError("No PDB file available. Call download_pdb() first.")
 
-    def find_mutations(self):
-        # Parse the PDB file
-        parser = PDB.PDBParser()
+        parser = PDB.PDBParser(QUIET=True)
         structure = parser.get_structure("structure", self.pdb_file)
 
-        # Extract the sequence from the PDB file
         ppb = PDB.PPBuilder()
         pdb_seq = ""
         pdb_residues = []
-        for pp in ppb.build_peptides(structure):
-            pdb_seq += str(pp.get_sequence())
-            for res in pp:
-                pdb_residues.append(res)
+        for peptide in ppb.build_peptides(structure):
+            pdb_seq += str(peptide.get_sequence())
+            for residue in peptide:
+                pdb_residues.append(residue)
 
-        # Read the FASTA file
-        fasta_seq = str(SeqIO.read(f"{self.uniprot_id}.fasta", "fasta").seq)
+        return pdb_seq, pdb_residues
 
-        # Perform local alignment using the Waterman-Smith-Beyer algorithm with BLOSUM62
-        alignments = pairwise2.align.localds(pdb_seq, fasta_seq, substitution_matrices.load("BLOSUM62"), -12, -1)
-        aligned_pdb_seq, aligned_fasta_seq = alignments[0][:2]
+    def get_reference_sequence(self, reference_sequence=None):
+        """Resolve the reference sequence from explicit input."""
+        explicit = reference_sequence or self.reference_sequence
+        if explicit:
+            return "".join(str(explicit).split()).upper()
+        return None
 
-        # Find mutations
-        mutations = []
-        pdb_index = fasta_index = 0
+    def find_mismatches(self, reference_sequence=None):
+        """Find residue mismatches between structure sequence and reference sequence."""
+        target_sequence = self.get_reference_sequence(reference_sequence=reference_sequence)
+        if not target_sequence:
+            raise ValueError("A reference sequence is required to reconcile residues.")
+
+        pdb_seq, pdb_residues = self._extract_pdb_sequence()
+        alignments = pairwise2.align.localds(
+            pdb_seq,
+            target_sequence,
+            substitution_matrices.load("BLOSUM62"),
+            -12,
+            -1,
+        )
+        if not alignments:
+            return []
+
+        aligned_pdb_seq, aligned_ref_seq = alignments[0][:2]
+
+        mismatches = []
+        pdb_index = 0
         for i in range(len(aligned_pdb_seq)):
             pdb_res = aligned_pdb_seq[i]
-            fasta_res = aligned_fasta_seq[i]
+            ref_res = aligned_ref_seq[i]
             if pdb_res != "-":
                 pdb_index += 1
-            if fasta_res != "-":
-                fasta_index += 1
-            if pdb_res != "-" and fasta_res != "-" and pdb_res != fasta_res:
-                mutations.append((pdb_residues[pdb_index - 1], pdb_res, fasta_res))
+            if pdb_res != "-" and ref_res != "-" and pdb_res != ref_res:
+                mismatches.append((pdb_residues[pdb_index - 1], pdb_res, ref_res))
 
-        return mutations
+        return mismatches
 
-    def revert_mutations(self):
-        mutations = self.find_mutations()
-        if not mutations:
-            print("No mutations found.")
+    def reconcile_to_reference(self, reference_sequence=None, output_suffix="_reconciled"):
+        """Rewrite mismatched residues to match the selected reference sequence."""
+        mismatches = self.find_mismatches(reference_sequence=reference_sequence)
+        if not mismatches:
             return None
 
-        print("Mutations found:")
-        for mutation in mutations:
-            print(f"Residue: {mutation[0].get_id()[1]}, PDB AA: {mutation[1]}, FASTA AA: {mutation[2]}")
-
-        print("Reverting mutations...")
-        parser = PDB.PDBParser()
+        parser = PDB.PDBParser(QUIET=True)
         structure = parser.get_structure("structure", self.pdb_file)
 
-        for mutation in mutations:
-            residue = mutation[0]
-            fasta_aa = mutation[2]
-            residue.resname = protein_letters_1to3[fasta_aa]
+        reconciled = 0
+        for residue, _pdb_aa, ref_aa in mismatches:
+            ref_aa = ref_aa.upper()
+            if ref_aa in protein_letters_1to3:
+                residue.resname = protein_letters_1to3[ref_aa]
+                reconciled += 1
 
-        pdb_id = structure.get_id()
-        reverted_pdb_file = f"{pdb_id}_reverted.pdb"
+        if reconciled == 0:
+            return None
+
+        stem = Path(self.pdb_file).stem
+        reconciled_file = f"{stem}{output_suffix}.pdb"
         io = PDBIO()
         io.set_structure(structure)
-        io.save(reverted_pdb_file)
-        print(f"Reverted structure saved as {reverted_pdb_file}")
-        return reverted_pdb_file
+        io.save(reconciled_file)
+        return reconciled_file
