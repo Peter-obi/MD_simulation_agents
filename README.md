@@ -70,10 +70,10 @@ uv run skydiscover-run \
 
 ## Sequence Runtime Execution
 
-Run a predefined sequence task with optional smoke test:
+Run a predefined sequence task:
 
 ```bash
-python -m simulation_agent.main task hba1_reference --run-smoke-test --smoke-test-steps 250
+python -m simulation_agent.main task hba1_reference 
 ```
 
 List available sequence tasks:
