@@ -1,6 +1,4 @@
-# Molecular Dynamics Expert-Policy Agent
-
-This repository is now sequence-first and LLM-policy-driven.
+# Molecular Dynamics Agent
 
 The objective is to optimize whether an LLM can produce the same setup decisions a human MD expert would make when given a protein sequence, then use that protocol to build a runnable OpenMM simulation workflow.
 
@@ -58,13 +56,12 @@ Evaluate current policy against sequence expert-step benchmarks:
 python -m simulation_agent.evaluate_setup_policy simulation_agent/policy.py
 ```
 
-## Harness Optimization (SkyDiscover)
+## Harness Optimization
 
 ```bash
-cd /Users/peterobi/Documents/ideas/harness/skydiscover-main
 uv run skydiscover-run \
-  /Users/peterobi/Documents/ideas/MD_simulation_agents/simulation_agent/policy.py \
-  /Users/peterobi/Documents/ideas/MD_simulation_agents/simulation_agent/setup_evaluator.py \
+  path/to/policy.py \
+  path/to/setup_evaluator.py \
   --search adaevolve \
   --model gpt-5 \
   --iterations 30 \
@@ -96,9 +93,3 @@ Run full production on top of setup:
 ```bash
 python -m simulation_agent.main task adrb2_reference --run-production --production-steps 100000
 ```
-
-## Notes
-
-- Sequence reconciliation is treated as one expert decision step, not as a hardcoded WT-only rule.
-- API keys are required for the external LLM optimizer loop, not for the local setup/simulation code path itself.
-- Runtime execution modes require `openmm` and `pdbfixer` installed locally.
